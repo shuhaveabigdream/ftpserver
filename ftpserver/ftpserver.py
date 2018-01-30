@@ -37,40 +37,41 @@ class FtpServer:
         Error={}
         try:
             date=conn.recv(1024)
-            if date:
-                package=json.loads(date.decode('utf-8'))
-                action=package.get('action',None)
-                paths=package.get('path',None)
-                if action=='Download' or action=='Upload':
-                    if os.path.isfile(paths):
-                        if not self.QueuePorts.empty():
-                            tmp={}
-                            tmp['port'] =self.QueuePorts.get()
-                            tmp['action']=action
-                            tmp['path']=paths
-                            self.QueueInfors.put(tmp)#将信息传入消息队列 本次连接结束
-                            conn.send(json.dumps({'status':'True','port':tmp['port']}).encode('utf-8'))#将本次连接结果返回客户端
-                        else:
-                            Error['status'] = False
-                            Error['reason'] = '服务器资源已占满，请稍后再试'
-                            package = json.dumps(Error)
-                            conn.send(package.encode('utf-8'))
-                    else:
-                        Error['status'] = False
-                        Error['reason'] = '不存在该路径'
-                        package = json.dumps(Error)
-                        conn.send(package.encode('utf-8'))
+        except Exception as e:
+         print(e)
+        if date:
+            package=json.loads(date.decode('utf-8'))
+            action=package.get('action',None)
+            paths=package.get('path',None)
+            if action=='Download' or action=='Upload':
+                if action=='Download' and os.path.isfile(paths)==False:
+                    Error['status'] = False
+                    Error['reason'] = '不存在该路径'
+                    package = json.dumps(Error)
+                    conn.send(package.encode('utf-8'))
+                    return
+                if not self.QueuePorts.empty():
+                    tmp={}
+                    tmp['port'] =self.QueuePorts.get()
+                    tmp['action']=action
+                    tmp['path']=paths
+                    self.QueueInfors.put(tmp)#将信息传入消息队列 本次连接结束
+                    conn.send(json.dumps({'status':'True','port':tmp['port']}).encode('utf-8'))#将本次连接结果返回客户端
                 else:
-                    Error['status']=False
-                    Error['reason']='错误的指令'
-                    package=json.dumps(Error)
+                    Error['status'] = False
+                    Error['reason'] = '服务器资源已占满，请稍后再试'
+                    package = json.dumps(Error)
                     conn.send(package.encode('utf-8'))
             else:
-                print('lost connect')
-                self.sel.unregister(conn)
-                conn.close()
-        except Exception as e:
-            print(e)
+                Error['status']=False
+                Error['reason']='错误的指令'
+                package=json.dumps(Error)
+                conn.send(package.encode('utf-8'))
+        else:
+            print('lost connect')
+            self.sel.unregister(conn)
+            conn.close()
+
 
 class TransServer:#需要修的太多 不继承了
     def __init__(self,**kwd):
