@@ -35,6 +35,7 @@ class FtpServer:
         self.sel.register(conn,EVENT_READ,self.interface)
     def interface(self,conn,mask):
         Error={}
+        date=None
         try:
             date=conn.recv(1024)
         except Exception as e:
@@ -86,7 +87,7 @@ class TransServer:#需要修的太多 不继承了
     def connect(self):
         self.Socket.bind((self.IpAddr,self.Port))
         self.Socket.listen(10)
-        self.Socket.setblocking(False)
+        self.Socket.setblocking(True)
         self.sel.register(self.Socket,EVENT_READ,self.accpet)
         while self.block:
             events=self.sel.select()
@@ -98,7 +99,7 @@ class TransServer:#需要修的太多 不继承了
 
     def accpet(self,sock,mask):
         conn,addr=sock.accept()
-        conn.setblocking(False)
+        conn.setblocking(True)
         self.sel.register(conn,EVENT_READ,self.interface)
 
     def interface(self,conn,mask):
@@ -131,7 +132,8 @@ class TransServer:#需要修的太多 不继承了
                             break
                         except Exception as e:
                             print(e)
-                            time.sleep(0.1)
+                            self.block=False
+                            return
                 print('compelet')
                 self.block=False
             elif self.action=='Upload':#上传步骤
@@ -157,6 +159,7 @@ class TransServer:#需要修的太多 不继承了
                     print('rest',rest_size)
                 print('complete')
                 self.block=False
+            self.Socket.close()
         else:
             print('lost connect')
             conn.close()
@@ -165,7 +168,12 @@ def Task_Ftp(*args):
     Ports=args[1]
     infor=args[0]
     x=FtpServer(ipaddr=Host,port=8001,QueuePorts=Ports,QueueInfors=infor)
-    x.connect()
+    try:
+        x.connect()
+    except Exception as e:
+        print(e)
+        print('连接中断')
+
 
 
 def open_server(*args):

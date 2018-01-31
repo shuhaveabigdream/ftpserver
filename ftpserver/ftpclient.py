@@ -38,7 +38,8 @@ class MyClient:
             time.sleep(0.5)
             try:
                 self._Trans.connect((self.ipaddr,callback['port']))
-            except:
+            except Exception as e:
+                print(e)
                 print('链接错误')
                 return False
             self._Trans.send('Ready'.encode('utf-8'))
@@ -86,9 +87,11 @@ class MyClient:
         callback=callback.decode('utf-8')
         callback=json.loads(callback)
         if callback['status']=='True':
+            time.sleep(1)
             try:
                 self._Trans.connect((self.ipaddr,callback['port']))
-            except:
+            except Exception as e:
+                print(e)
                 print('链接失败')
                 return
             file=open(SAVEPATH+'test.sm','wb')
@@ -97,12 +100,8 @@ class MyClient:
             callback=self._Trans.recv(1024)
             callback=json.loads(callback.decode('utf-8'))
             file_size=callback['filesize']
-            while file_size > 0:
-                date = self._Trans.recv(1024 * 1024)
-                file.write(date)
-                file_size-= len(date)
-                print('剩余%s未下载,本次包长度:%s' % (file_size, len(date)))
-            print('本次下载完成')
+            time.sleep(1)
+            self._Trans.close()
             file.close()
         else:
             print('ERROR')
@@ -124,11 +123,15 @@ class MyClient:
                 Path=input('输入本地文件地址(绝对路径):')
                 if self._CheckPath(Path):
                     self._Cmd_Upload(Path)
+                    self._Trans.close()
+                    self._Trans=socket()
                 else:
                     print('该路径不存在，请检查')
             elif Ord=='2':
                 Path=input('输入需要下载的文件地址(绝对路径):')
                 self._Cmd_Download(Path)
+                self._Trans.close()
+                self._Trans=socket()
             elif Ord=='3':
                 return
             else:
