@@ -3,7 +3,7 @@ import json
 import os,sys
 import time
 
-SAVEPATH='H://Resource/'
+SAVEPATH='f://Resource/'
 
 
 class MyClient:
@@ -101,6 +101,16 @@ class MyClient:
             callback=json.loads(callback.decode('utf-8'))
             file_size=callback['filesize']
             time.sleep(1)
+            while file_size>0:
+                try:
+                    date=self._Trans.recv(1024*1024)
+                    file_size-=len(date)
+                    file.write(date)
+                    print('reset:%s'%file_size)
+                except Exception as e:
+                    print(e)
+                    print('lost connect')
+                    break
             self._Trans.close()
             file.close()
         else:

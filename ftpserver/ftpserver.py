@@ -102,7 +102,68 @@ class TransServer:#需要修的太多 不继承了
         conn.setblocking(True)
         self.sel.register(conn,EVENT_READ,self.interface)
 
-    def interface(self,conn,mask):
+    def BeforeUpload(self,conn):#即将进行上传前
+        pass
+
+    def BeforeDownload(self,conn):#即将进行下载前
+        pass
+
+    def Upload(self,conn):#处理上传问题
+        conn.send('ACK'.encode('utf-8'))  # 发送一个ACK信号让客户端开始上传
+        tmp = conn.recv(1024)
+        time.sleep(0.1)
+        try:
+            tmp = json.loads(tmp.decode('utf-8'))
+            print('tmp', tmp)
+        except:
+            print('编码错误', tmp)
+            self.block = False
+            return
+        conn.send('ACK'.encode('utf-8'))
+        file_size = tmp['filesize']  # 获取文件大小
+        file_name = tmp['filename']
+        file = open(SAVEPATH + file_name, 'wb')  # 打开文件夹
+        rest_size = file_size
+        while rest_size > 0:
+            part = conn.recv(1024 * 1024)
+            file.write(part)
+            rest_size -= len(part)
+            print('rest', rest_size)
+        print('complete')
+        self.block = False
+
+
+
+    def Download(self,conn):#处理下载问题
+        ans = {}
+        ans['statue'] = True
+        file = open(self.path, 'rb')
+        file_size = os.path.getsize(self.path)
+        print('file_size', file_size)
+        ans['filesize'] = file_size
+        conn.send(json.dumps(ans).encode('utf-8'))
+        now_size = 0
+        for line in file:
+            while True:
+                try:
+                    conn.send(line)
+                    now_size += len(line)
+                    print('all:%s rest:%s' % (file_size, int(file_size) - now_size))
+                    break
+                except Exception as e:
+                    print(e)
+                    self.block = False
+                    return
+        print('compelet')
+        self.block = False
+
+    def AfterUpload(self,conn):#上传完成后
+        pass
+
+    def AfterDownload(self,conn):#下载完成后
+        pass
+
+    def interface(self,conn,mask):#协议对接
         conn.setblocking(True)
         try:
             date=conn.recv(1024)
@@ -115,54 +176,19 @@ class TransServer:#需要修的太多 不继承了
             return
         if date=='Ready':
             if self.action=='Download':
-                ans={}
-                ans['statue']=True
-                file=open(self.path,'rb')
-                file_size=os.path.getsize(self.path)
-                print('file_size',file_size)
-                ans['filesize'] =file_size
-                conn.send(json.dumps(ans).encode('utf-8'))
-                now_size=0
-                for line in file:
-                    while True:
-                        try:
-                            conn.send(line)
-                            now_size+=len(line)
-                            print('all:%s rest:%s'%(file_size,int(file_size)-now_size))
-                            break
-                        except Exception as e:
-                            print(e)
-                            self.block=False
-                            return
-                print('compelet')
-                self.block=False
+                self.BeforeDownload(conn)
+                self.Download(conn)
+                self.AfterDownload(conn)
             elif self.action=='Upload':#上传步骤
-                conn.send('ACK'.encode('utf-8'))#发送一个ACK信号让客户端开始上传
-                tmp=conn.recv(1024)
-                time.sleep(0.1)
-                try:
-                    tmp=json.loads(tmp.decode('utf-8'))
-                    print('tmp',tmp)
-                except:
-                    print('编码错误',tmp)
-                    self.block=False
-                    return
-                conn.send('ACK'.encode('utf-8'))
-                file_size=tmp['filesize']#获取文件大小
-                file_name=tmp['filename']
-                file=open(SAVEPATH+file_name,'wb')#打开文件夹
-                rest_size=file_size
-                while rest_size>0:
-                    part=conn.recv(1024*1024)
-                    file.write(part)
-                    rest_size-=len(part)
-                    print('rest',rest_size)
-                print('complete')
-                self.block=False
+                self.BeforeDownload(conn)
+                self.Upload(conn)
+                self.AfterUpload(conn)
             self.Socket.close()
         else:
             print('lost connect')
             conn.close()
+
+
 
 def Task_Ftp(*args):
     Ports=args[1]
