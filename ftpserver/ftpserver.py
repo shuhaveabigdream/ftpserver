@@ -10,6 +10,7 @@ import os,sys
 Host='127.0.0.1'
 PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+'Resource/'
 SAVEPATH='f://Resource/'
+socket.setdefaulttimeout(5)
 
 class FtpServer:
     def __init__(self,**kwds):
@@ -33,6 +34,46 @@ class FtpServer:
         conn,addr=sock.accept()
         conn.setblocking(False)
         self.sel.register(conn,EVENT_READ,self.interface)
+
+    def Task_Upload(self,conn,size,name):
+        Error={}
+        if not self.QueuePorts.empty():
+            tmp = {}
+            tmp['port'] = self.QueuePorts.get()
+            tmp['action'] = 'Upload'
+            tmp['file_size']=size
+            tmp['extra']=name
+            self.QueueInfors.put(tmp)  # 将信息传入消息队列 本次连接结束
+            conn.send(json.dumps({'status': 'True', 'port': tmp['port'],'size':size}).encode('utf-8'))  # 将本次连接结果返回客户端
+        else:
+            Error['status'] = False
+            Error['reason'] = '服务器资源已占满，请稍后再试'
+            package = json.dumps(Error)
+            conn.send(package.encode('utf-8'))
+
+    def Task_Download(self,conn,path):
+        Error = {}
+        if os.path.isfile(path)==False:
+            Error['status'] = False
+            Error['reason'] = '不存在该路径'
+            package = json.dumps(Error)
+            conn.send(package.encode('utf-8'))
+            return
+        if not self.QueuePorts.empty():
+            tmp = {}
+            tmp['port'] = self.QueuePorts.get()
+            tmp['action'] = 'Download'
+            tmp['extra'] = path
+            tmp['file_size']=os.path.getsize(path)
+            self.QueueInfors.put(tmp)  # 将信息传入消息队列 本次连接结束
+            conn.send(json.dumps({'status': 'True', 'port': tmp['port'],'size':tmp['file_size']}).encode('utf-8'))  # 将本次连接结果返回客户端
+        else:
+            Error['status'] = False
+            Error['reason'] = '服务器资源已占满，请稍后再试'
+            package = json.dumps(Error)
+            conn.send(package.encode('utf-8'))
+
+
     def interface(self,conn,mask):
         Error={}
         date=None
@@ -44,29 +85,15 @@ class FtpServer:
             package=json.loads(date.decode('utf-8'))
             action=package.get('action',None)
             paths=package.get('path',None)
-            if action=='Download' or action=='Upload':
-                if action=='Download' and os.path.isfile(paths)==False:
-                    Error['status'] = False
-                    Error['reason'] = '不存在该路径'
-                    package = json.dumps(Error)
-                    conn.send(package.encode('utf-8'))
-                    return
-                if not self.QueuePorts.empty():
-                    tmp={}
-                    tmp['port'] =self.QueuePorts.get()
-                    tmp['action']=action
-                    tmp['path']=paths
-                    self.QueueInfors.put(tmp)#将信息传入消息队列 本次连接结束
-                    conn.send(json.dumps({'status':'True','port':tmp['port']}).encode('utf-8'))#将本次连接结果返回客户端
-                else:
-                    Error['status'] = False
-                    Error['reason'] = '服务器资源已占满，请稍后再试'
-                    package = json.dumps(Error)
-                    conn.send(package.encode('utf-8'))
+            if action=='Download':
+                self.Task_Download(conn,paths)
+            elif action=='Upload':
+                filesize=package.get('filesize',None)
+                self.Task_Upload(conn,filesize,package['filename'])
             else:
-                Error['status']=False
-                Error['reason']='错误的指令'
-                package=json.dumps(Error)
+                Error['status'] = False
+                Error['reason'] = '错误的指令'
+                package = json.dumps(Error)
                 conn.send(package.encode('utf-8'))
         else:
             print('lost connect')
@@ -78,8 +105,10 @@ class TransServer:#需要修的太多 不继承了
     def __init__(self,**kwd):
         self.IpAddr=kwd['ipaddr']
         self.Port=kwd['port']
-        self.path=kwd['path']
         self.action=kwd['action']
+        self.extra=kwd['extra']
+        self.file_size=kwd['file_size']
+        self.extra=kwd['extra']
         self.sel = DefaultSelector()
         self.Socket = socket.socket()
         self.block=True
@@ -100,48 +129,50 @@ class TransServer:#需要修的太多 不继承了
     def accpet(self,sock,mask):
         conn,addr=sock.accept()
         conn.setblocking(True)
-        self.sel.register(conn,EVENT_READ,self.interface)
-
+        if(self.action=='Download'):
+            self.sel.register(conn,EVENT_WRITE,self.Download)
+        elif(self.action=='Upload'):
+            self.sel.register(conn, EVENT_WRITE, self.Upload)
     def BeforeUpload(self,conn):#即将进行上传前
         pass
 
     def BeforeDownload(self,conn):#即将进行下载前
         pass
 
-    def Upload(self,conn):#处理上传问题
-        conn.send('ACK'.encode('utf-8'))  # 发送一个ACK信号让客户端开始上传
-        tmp = conn.recv(1024)
-        time.sleep(0.1)
-        try:
-            tmp = json.loads(tmp.decode('utf-8'))
-            print('tmp', tmp)
-        except:
-            print('编码错误', tmp)
-            self.block = False
-            return
-        conn.send('ACK'.encode('utf-8'))
-        file_size = tmp['filesize']  # 获取文件大小
-        file_name = tmp['filename']
+    def Upload(self,conn,mask):#处理上传问题
+        file_size = self.file_size
+        file_name = self.extra
         file = open(SAVEPATH + file_name, 'wb')  # 打开文件夹
         rest_size = file_size
+        conn.send('ACK'.encode('utf-8'))
         while rest_size > 0:
-            part = conn.recv(1024 * 1024)
-            file.write(part)
-            rest_size -= len(part)
-            print('rest', rest_size)
-        print('complete')
+            try:
+
+                part = conn.recv(1024 * 1024)
+                if part:
+                    file.write(part)
+                    rest_size -= len(part)
+                    print('rest', rest_size)
+                else:
+                    raise ValueError('传输错误')
+            except Exception as e:
+                print(e)
+                break
+        print('task complete')
         self.block = False
 
-
-
-    def Download(self,conn):#处理下载问题
-        ans = {}
-        ans['statue'] = True
-        file = open(self.path, 'rb')
-        file_size = os.path.getsize(self.path)
-        print('file_size', file_size)
-        ans['filesize'] = file_size
-        conn.send(json.dumps(ans).encode('utf-8'))
+    def Download(self,conn,mask):#处理下载问题
+        #改进 这里不再需要获取文件相关信息，只需要进行下载
+        file = open(self.extra, 'rb')
+        file_size=self.file_size
+        try:
+            date=conn.recv(1024).decode('utf-8')
+            if date!='ACK':
+                raise ValueError('返回信号不正确')
+        except Exception as e:
+            print(e)
+            self.block=False
+            return
         now_size = 0
         for line in file:
             while True:
@@ -163,31 +194,6 @@ class TransServer:#需要修的太多 不继承了
     def AfterDownload(self,conn):#下载完成后
         pass
 
-    def interface(self,conn,mask):#协议对接
-        conn.setblocking(True)
-        try:
-            date=conn.recv(1024)
-            date=date.decode('utf-8')
-            print('date',date)
-        except Exception as e:
-            print(e)
-            self.sel.unregister(conn)
-            conn.close()
-            return
-        if date=='Ready':
-            if self.action=='Download':
-                self.BeforeDownload(conn)
-                self.Download(conn)
-                self.AfterDownload(conn)
-            elif self.action=='Upload':#上传步骤
-                self.BeforeDownload(conn)
-                self.Upload(conn)
-                self.AfterUpload(conn)
-            self.Socket.close()
-        else:
-            print('lost connect')
-            conn.close()
-
 
 
 def Task_Ftp(*args):
@@ -204,7 +210,7 @@ def Task_Ftp(*args):
 
 def open_server(*args):
     print('open server',args)
-    server=TransServer(ipaddr=Host,port=args[1],path=args[2],action=args[3])
+    server=TransServer(ipaddr=Host,port=args[1],action=args[2],extra=args[3],file_size=args[4])
     server.connect()
     print('放回端口到队列中')
     args[0].put(args[1])#端口已经用完了 放回去
@@ -215,7 +221,7 @@ def Task_Trans(*args):
         if not infor.empty():
             date=infor.get()
             print('Get Task:%s'%date)
-            x=Thread(target=open_server,args=[Ports,date['port'] ,date['path'],date['action']])
+            x = Thread(target=open_server,args=[Ports, date['port'], date['action'], date['extra'],date['file_size']])
             x.start()
             time.sleep(0.2)
 

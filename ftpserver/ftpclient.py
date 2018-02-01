@@ -4,7 +4,7 @@ import os,sys
 import time
 
 SAVEPATH='f://Resource/'
-
+socket.settimeout(5)
 
 class MyClient:
     def __init__(self,**kwds):
@@ -25,10 +25,12 @@ class MyClient:
             return True
         else:
             return False
-    def _Cmd_Upload(self,Path):
+    def _Cmd_Upload(self,Path,filename):
         date={}
         date['action'] = 'Upload'
         date['path'] = 'f://爱下电影.txt'
+        date['filesize']=os.path.getsize(Path)#上传文件大小
+        date['filename']=filename
         date=json.dumps(date)#打包成JSON
         self._Cmd.send(date.encode('utf-8'))
         callback=self._Cmd.recv(1024)#接受反馈数据
@@ -42,34 +44,21 @@ class MyClient:
                 print(e)
                 print('链接错误')
                 return False
-            self._Trans.send('Ready'.encode('utf-8'))
             callback=self._Trans.recv(1024)
             if callback.decode('utf-8')!='ACK':
-                print('服务器响应不正确 time0')
+                print('服务器响应不正确 ')
                 self._Trans.close()
                 return False
             file_size=os.path.getsize(Path)
-            date={}
-            date['filename']='test.txt'
-            date['filesize']=file_size
-            date=json.dumps(date)
-            self._Trans.send(date.encode('utf-8'))
-            callback= self._Trans.recv(1024)
-            if callback.decode('utf-8')!='ACK':
-                print('服务器响应不正确 time1')
-                self._Trans.close()
-                return False
             file=open(Path,'rb')
             for i in file:
-                while True:
-                    try:
-                        self._Trans.send(i)
-                        file_size -= len(i)
-                        print('剩余:%s' % file_size)
-                        break
-                    except Exception as e:
-                        print(e)
-                        time.sleep(0.1)
+                try:
+                    self._Trans.send(i)
+                    file_size -= len(i)
+                    print('剩余:%s' % file_size)
+                except Exception as e:
+                    print(e)
+                    time.sleep(0.1)
             self._Trans.close()
             print('本次传输完成!')
         else:
@@ -87,6 +76,7 @@ class MyClient:
         callback=callback.decode('utf-8')
         callback=json.loads(callback)
         if callback['status']=='True':
+            file_size=callback['size']
             time.sleep(1)
             try:
                 self._Trans.connect((self.ipaddr,callback['port']))
@@ -96,17 +86,16 @@ class MyClient:
                 return
             file=open(SAVEPATH+'test.sm','wb')
             time.sleep(0.5)
-            self._Trans.send('Ready'.encode('utf-8'))
-            callback=self._Trans.recv(1024)
-            callback=json.loads(callback.decode('utf-8'))
-            file_size=callback['filesize']
-            time.sleep(1)
+            self._Trans.send('ACK'.encode('utf-8'))
             while file_size>0:
                 try:
                     date=self._Trans.recv(1024*1024)
-                    file_size-=len(date)
-                    file.write(date)
-                    print('reset:%s'%file_size)
+                    if date:
+                        file_size-=len(date)
+                        file.write(date)
+                        print('reset:%s'%file_size)
+                    else:
+                        raise ValueError('传输错误')
                 except Exception as e:
                     print(e)
                     print('lost connect')
@@ -132,7 +121,8 @@ class MyClient:
             if Ord=='1':
                 Path=input('输入本地文件地址(绝对路径):')
                 if self._CheckPath(Path):
-                    self._Cmd_Upload(Path)
+                    filename = input('输入上传文件名:')
+                    self._Cmd_Upload(Path,filename)
                     self._Trans.close()
                     self._Trans=socket()
                 else:
