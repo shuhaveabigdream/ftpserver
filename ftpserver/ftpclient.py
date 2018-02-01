@@ -3,8 +3,7 @@ import json
 import os,sys
 import time
 
-SAVEPATH='f://Resource/'
-socket.settimeout(5)
+SAVEPATH='d://Resource/'
 
 class MyClient:
     def __init__(self,**kwds):
@@ -142,6 +141,7 @@ class MyClient:
 if __name__=='__main__':
     if os.path.exists(SAVEPATH)==False:
         print('指定的下载存放路径不正确')
+        sys.exit(0)
     x=MyClient()
     x.Shell()
     print('Bye!')
