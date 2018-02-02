@@ -3,7 +3,7 @@ import json
 import os,sys
 import time
 
-SAVEPATH='d://Resource/'
+SAVEPATH='d://Resource/'#下载文件的存放位置
 
 class MyClient:
     def __init__(self,**kwds):
@@ -27,7 +27,6 @@ class MyClient:
     def _Cmd_Upload(self,Path,filename):
         date={}
         date['action'] = 'Upload'
-        date['path'] = 'f://爱下电影.txt'
         date['filesize']=os.path.getsize(Path)#上传文件大小
         date['filename']=filename
         date=json.dumps(date)#打包成JSON

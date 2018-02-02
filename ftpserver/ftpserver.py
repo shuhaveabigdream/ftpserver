@@ -8,8 +8,7 @@ import json
 import os,sys
 
 Host='127.0.0.1'
-PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+'Resource/'
-SAVEPATH='f://Resource/'
+PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+'/Resource/'
 socket.setdefaulttimeout(5)
 
 class FtpServer:
@@ -133,16 +132,11 @@ class TransServer:#需要修的太多 不继承了
             self.sel.register(conn,EVENT_WRITE,self.Download)
         elif(self.action=='Upload'):
             self.sel.register(conn, EVENT_WRITE, self.Upload)
-    def BeforeUpload(self,conn):#即将进行上传前
-        pass
-
-    def BeforeDownload(self,conn):#即将进行下载前
-        pass
 
     def Upload(self,conn,mask):#处理上传问题
         file_size = self.file_size
         file_name = self.extra
-        file = open(SAVEPATH + file_name, 'wb')  # 打开文件夹
+        file = open(PATH + file_name, 'wb')  # 打开文件夹
         rest_size = file_size
         conn.send('ACK'.encode('utf-8'))
         while rest_size > 0:
@@ -160,6 +154,7 @@ class TransServer:#需要修的太多 不继承了
                 break
         print('task complete')
         self.block = False
+        self.AfterUpload(conn)
 
     def Download(self,conn,mask):#处理下载问题
         #改进 这里不再需要获取文件相关信息，只需要进行下载
@@ -187,6 +182,7 @@ class TransServer:#需要修的太多 不继承了
                     return
         print('compelet')
         self.block = False
+        self.AfterDownload(conn)
 
     def AfterUpload(self,conn):#上传完成后
         pass
@@ -228,7 +224,6 @@ def Task_Trans(*args):
 if __name__=='__main__':
     s=Queue()#文件路径信息
     b=Queue()#可用端口
-    s.empty()
     for i in range(10):#放入开放的端口
         b.put(i+9000)
     CmdServer=Process(target=Task_Ftp,args=[s,b])
